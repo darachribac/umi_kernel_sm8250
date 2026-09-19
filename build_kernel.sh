@@ -78,6 +78,11 @@ if [ "$ENABLE_KSU" -eq 1 ]; then
     echo "[*] Downloading and running ReSukiSU remote setup script..."
     curl -LSs "https://raw.githubusercontent.com/ReSukiSU/ReSukiSU/main/kernel/setup.sh" | bash
     echo "[+] KernelSU setup finished."
+    # Patch Kbuild: allow MANUAL_HOOK on Non-GKI kernels (TP hooks are GKI 2.0+)
+    if [ -L "drivers/kernelsu" ] && [ -f "drivers/kernelsu/Kbuild" ]; then
+        sed -i 's/\$(error TP hooks are incompatible with Non-GKI\/GKI 1.0 kernels.)/$(warning TP hooks unsupported on Non-GKI; using manual hooks if CONFIG_KSU_MANUAL_HOOK is set)/' drivers/kernelsu/Kbuild
+        echo "[+] Kbuild patched for Non-GKI manual hook support."
+    fi
 fi
 
 # ==========================================
@@ -206,11 +211,16 @@ build_target() {
 
     # 2. KernelSU configurations
     if [ "$ENABLE_KSU" -eq 1 ]; then
-        echo "[*] Injecting KernelSU & SUSFS configurations..."
+        echo "[*] Injecting KernelSU configurations..."
         scripts/config --file "${OUT_DIR}/.config" \
             -e KSU \
             -e THREAD_INFO_IN_TASK \
-            -e KSU_SUSFS
+            -d KSU_SUSFS \
+            -d KSU_TRACEPOINT_HOOK \
+            -e KSU_MANUAL_HOOK \
+            -d KSU_MANUAL_HOOK_AUTO_SETUID_HOOK \
+            -d KSU_MANUAL_HOOK_AUTO_INITRC_HOOK \
+            -d KSU_MANUAL_HOOK_AUTO_INPUT_HOOK
     fi
 
     # 3. MIUI configurations
@@ -294,7 +304,7 @@ build_target() {
         # 确定 ZIP 文件名
         local KSU_ZIP_STR="NoKernelSU"
         if [ "$ENABLE_KSU" -eq 1 ]; then
-            KSU_ZIP_STR="ReSukiSU-SuSFS"
+            KSU_ZIP_STR="ReSukiSU"
         fi
         local GIT_COMMIT_ID=$(git rev-parse --short=8 HEAD 2>/dev/null || echo "unknown")
         local OS_UPPER=$(echo "$OS_TYPE" | tr '[:lower:]' '[:upper:]')
