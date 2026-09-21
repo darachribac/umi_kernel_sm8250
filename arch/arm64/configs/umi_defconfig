@@ -762,3 +762,6 @@ CONFIG_DEBUG_FRAME_POINTER=n
 # CONFIG_FTRACE=n               # Disable ftrace
 # CONFIG_SCHED_TRACER=n         # Disable scheduler tracer
 # CONFIG_EVENTS=n               # Disable event tracing
+
+# Baseband-guard LSM integration
+CONFIG_LSM="lockdown,yama,loadpin,safesetid,integrity,bpf,baseband_guard"
