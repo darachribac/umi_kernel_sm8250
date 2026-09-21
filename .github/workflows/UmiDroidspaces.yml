@@ -344,6 +344,7 @@ jobs:
         echo "CONFIG_TCP_CONG_BBR=y" >> "$DEFCONFIG"
         echo "CONFIG_TCP_CONG_VEGAS=y" >> "$DEFCONFIG"
         echo "CONFIG_IP_NF_TARGET_TTL=y" >> "$DEFCONFIG"
+        echo "CONFIG_SECURITY_SELINUX_SIDTAB_HASH_BITS=10" >> "$DEFCONFIG"
         echo "CONFIG_DYNAMIC_FSYNC=y" >> "$DEFCONFIG"
         echo "CONFIG_IOSCHED_ANXIETY=y" >> "$DEFCONFIG"
         echo "CONFIG_DEFAULT_ANXIETY=y" >> "$DEFCONFIG"
