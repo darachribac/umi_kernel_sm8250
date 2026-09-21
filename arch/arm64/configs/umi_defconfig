@@ -756,3 +756,9 @@ CONFIG_DEBUG_FRAME_POINTER=n
 # CONFIG_F2FS_FS=y            # Secondary - good for flash storage  
 # CONFIG_EXCFS_FS=n           # Experimental - disable for stability
 # CONFIG_BALLOG_FS=n          # Logging filesystem - disable for production
+
+# DISABLE TRACEPOINTS FOR PRODUCTION
+# CONFIG_TRACEPOINTS=n           # Disable tracepoints
+# CONFIG_FTRACE=n               # Disable ftrace
+# CONFIG_SCHED_TRACER=n         # Disable scheduler tracer
+# CONFIG_EVENTS=n               # Disable event tracing
