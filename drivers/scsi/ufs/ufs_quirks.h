@@ -110,6 +110,13 @@ struct ufs_dev_fix {
  * never enabled for such devices.
  */
 #define UFS_DEVICE_NO_FASTAUTO		(1 << 5)
+#define UFS_DEVICE_SLOW_WRITE			(1 << 6)
+#define UFS_DEVICE_FLUSH_BIAS			(1 << 7)
+#define UFS_DEVICE_READ_AHEAD_LIMIT		(1 << 8)
+#define UFS_DEVICE_WRITE_BURST			(1 << 9)
+#define UFS_DEVICE_POWER_SAVE			(1 << 10)
+#define UFS_DEVICE_IDLE_TIMEOUT			(1 << 11)
+#define UFS_DEVICE_READ_AHEAD			(1 << 12)
 
 /*
  * It seems some UFS devices may keep drawing more than sleep current
