@@ -6,6 +6,7 @@
 #ifndef __QCOM_CLK_COMMON_H__
 #define __QCOM_CLK_COMMON_H__
 
+#include <linux/clk-provider.h>
 #include <linux/reset-controller.h>
 
 struct platform_device;
