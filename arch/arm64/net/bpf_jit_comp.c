@@ -1134,6 +1134,7 @@ skip_init_ctx:
 		bpf_jit_binary_lock_ro(header);
 #ifdef CONFIG_TRACEPOINTS
 		trace_android_vh_set_memory_ro((unsigned long)header, header->pages);
+		trace_android_vh_set_memory_x((unsigned long)header, header->pages);
 #endif
 	} else {
 		jit_data->ctx = ctx;
