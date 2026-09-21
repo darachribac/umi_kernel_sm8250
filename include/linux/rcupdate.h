@@ -941,13 +941,6 @@ static inline notrace void rcu_read_unlock_sched_notrace(void)
 
 
 /* Compatibility shims for RCU trace functions (not in 4.19) */
-#ifndef call_rcu_tasks_trace
-static inline void call_rcu_tasks_trace(struct rcu_head *head, void (*func)(struct rcu_head *))
-{
-	call_rcu(head, func);
-}
-#endif
-
 #ifndef rcu_read_lock_trace
 #define rcu_read_lock_trace()	rcu_read_lock()
 #endif

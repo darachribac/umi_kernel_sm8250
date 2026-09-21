@@ -81,4 +81,9 @@ void rcu_barrier_tasks_trace(void);
 
 #endif /* #ifdef CONFIG_TASKS_TRACE_RCU */
 
+
+/* Forward declaration for call_rcu_tasks_trace (defined in kernel/rcu/tasks.h) */
+struct rcu_head;
+typedef void (*rcu_callback_t)(struct rcu_head *head);
+void call_rcu_tasks_trace(struct rcu_head *rhp, rcu_callback_t func);
 #endif /* __LINUX_RCUPDATE_TRACE_H */

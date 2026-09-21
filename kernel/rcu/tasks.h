@@ -565,8 +565,12 @@ EXPORT_SYMBOL_GPL(call_rcu_tasks_trace);
 /* If we are the last reader, wake up the grace-period kthread. */
 void rcu_read_unlock_trace_special(struct task_struct *t)
 {
+#ifdef CONFIG_TASKS_TRACE_RCU
 	WRITE_ONCE(t->trc_reader_need_end, false);
 	if (atomic_dec_and_test(&trc_n_readers_need_end))
 		wake_up(&trc_wait);
+#else
+	t = t;
+#endif
 }
 EXPORT_SYMBOL_GPL(rcu_read_unlock_trace_special);
