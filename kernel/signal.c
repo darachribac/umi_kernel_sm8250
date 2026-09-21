@@ -60,9 +60,10 @@
 #include <../drivers/rekernel/rekernel.h>
 #endif /* CONFIG_REKERNEL */
 #include "audit.h"	/* audit_signal_info() */
+// Manual tracehook declarations for disabled tracepoints (CONFIG_TRACEPOINTS=n)
+static inline void trace_android_vh_do_send_sig_info(int sig, struct task_struct *killer, struct task_struct *dst) {}
 
 #undef CREATE_TRACE_POINTS
-#include <trace/hooks/signal.h>
 /*
  * SLAB caches for signal bits.
  */

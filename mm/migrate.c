@@ -2064,11 +2064,25 @@ int migrate_misplaced_transhuge_page(struct mm_struct *mm,
 	WARN_ON(PageLRU(new_page));
 
 	/* Recheck the target PMD */
-	mmu_notifier_invalidate_range_start(mm, mmun_start, mmun_end);
+	{
+		struct mmu_notifier_range _range = {
+			.mm = mm,
+			.start = mmun_start,
+			.end = mmun_end,
+		};
+		mmu_notifier_invalidate_range_start(&_range);
+	}
 	ptl = pmd_lock(mm, pmd);
 	if (unlikely(!pmd_same(*pmd, entry) || !page_ref_freeze(page, 2))) {
 		spin_unlock(ptl);
-		mmu_notifier_invalidate_range_end(mm, mmun_start, mmun_end);
+		{
+		struct mmu_notifier_range _range = {
+			.mm = mm,
+			.start = mmun_start,
+			.end = mmun_end,
+		};
+		mmu_notifier_invalidate_range_end(&_range);
+	}
 
 		/* Reverse changes made by migrate_page_copy() */
 		if (TestClearPageActive(new_page))
@@ -2125,7 +2139,14 @@ int migrate_misplaced_transhuge_page(struct mm_struct *mm,
 	 * No need to double call mmu_notifier->invalidate_range() callback as
 	 * the above pmdp_huge_clear_flush_notify() did already call it.
 	 */
-	mmu_notifier_invalidate_range_end(mm, mmun_start, mmun_end);
+	{
+		struct mmu_notifier_range _range = {
+			.mm = mm,
+			.start = mmun_start,
+			.end = mmun_end,
+		};
+		mmu_notifier_invalidate_range_end(&_range);
+	}
 
 	/* Take an "isolate" reference and put new page on the LRU. */
 	get_page(new_page);
