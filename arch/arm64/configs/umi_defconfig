@@ -765,4 +765,4 @@ CONFIG_DEBUG_FRAME_POINTER=n
 
 # Baseband-guard LSM integration
 CONFIG_LSM="lockdown,yama,loadpin,safesetid,integrity,bpf,baseband_guard"
-CONFIG_SECURITY_SELINUX_SIDTAB_HASH_BITS=9
+CONFIG_SECURITY_SELINUX_SIDTAB_HASH_BITS=10
