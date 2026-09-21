@@ -110,7 +110,7 @@ int android_rvh_probe_register(struct tracepoint *tp, void *probe, void *data);
 
 #else /* !CONFIG_TRACEPOINTS || !CONFIG_ANDROID_VENDOR_HOOKS */
 /* suppress trace hooks */
-#define DECLARE_HOOK(...) /* empty */
+#define DECLARE_HOOK(name, proto, args)
 #define DECLARE_RESTRICTED_HOOK(name, proto, args, cond)		\
-	
+
 #endif
