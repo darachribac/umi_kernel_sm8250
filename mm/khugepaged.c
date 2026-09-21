@@ -1319,8 +1319,14 @@ static void retract_page_tables(struct address_space *mapping, pgoff_t pgoff)
 					up_write(&mm->mmap_lock);
 					continue;
 				}
-				mmu_notifier_invalidate_range_start(mm, addr,
-								    end);
+				{
+								struct mmu_notifier_range _range = {
+									.mm = mm,
+									.start = addr,
+									.end = end,
+								};
+								mmu_notifier_invalidate_range_start(&_range);
+							}
 				ptl = pmd_lock(mm, pmd);
 				/* assume page table is clear */
 				_pmd = pmdp_collapse_flush(vma, addr, pmd);
@@ -1328,8 +1334,14 @@ static void retract_page_tables(struct address_space *mapping, pgoff_t pgoff)
 				mm_dec_nr_ptes(mm);
 				tlb_remove_table_sync_one();
 				pte_free(mm, pmd_pgtable(_pmd));
-				mmu_notifier_invalidate_range_end(mm, addr,
-								  end);
+				{
+								struct mmu_notifier_range _range = {
+									.mm = mm,
+									.start = addr,
+									.end = end,
+								};
+								mmu_notifier_invalidate_range_end(&_range);
+							}
 			}
 			mmap_write_unlock(mm);
 		}
