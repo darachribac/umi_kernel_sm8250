@@ -29,3 +29,7 @@ DECLARE_HOOK(android_vh_check_bpf_syscall,
 #endif /* _TRACE_HOOK_SYSCALL_CHECK_H */
 /* This part must be outside protection */
 #include <trace/define_trace.h>
+// Manual declarations for disabled tracepoints
+static inline void trace_android_vh_check_mmap_file(const struct file *file, unsigned long prot, unsigned long flag, unsigned long ret) {}
+static inline void trace_android_vh_check_file_open(const struct file *file) {}
+static inline void trace_android_vh_check_bpf_syscall(int cmd, const union bpf_attr *attr, unsigned int size) {}
