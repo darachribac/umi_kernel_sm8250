@@ -389,6 +389,10 @@ static int max_extfrag_threshold = 1000;
 #ifdef CONFIG_BPF_SYSCALL
 static int bpf_stats_handler(struct ctl_table *table, int write,
 			     void __user *buffer, size_t *lenp,
+			     loff_t *ppos);
+
+static int bpf_stats_handler(struct ctl_table *table, int write,
+			     void __user *buffer, size_t *lenp,
 			     loff_t *ppos)
 {
 	struct static_key *key = (struct static_key *)table->data;
@@ -1725,6 +1729,7 @@ static struct ctl_table kern_table[] = {
 		.extra2		= &two,
 	},
 #endif
+#ifdef CONFIG_BPF_SYSCALL
 	{
 		.procname	= "bpf_stats_enabled",
 		.data		= &bpf_stats_enabled_key.key,
@@ -1732,6 +1737,7 @@ static struct ctl_table kern_table[] = {
 		.mode		= 0644,
 		.proc_handler	= bpf_stats_handler,
 	},
+#endif
 #if defined(CONFIG_TREE_RCU) || defined(CONFIG_PREEMPT_RCU)
 	{
 		.procname	= "panic_on_rcu_stall",
