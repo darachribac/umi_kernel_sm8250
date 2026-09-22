@@ -19,7 +19,9 @@
 #include <drm/drm_sysfs.h>
 #include <drm/drmP.h>
 #include "drm_internal.h"
+#ifdef CONFIG_DRM_MSM
 #include "drm_internal_mi.h"
+#endif
 #include <drm/msm_drm_pp.h>
 
 #define to_drm_minor(d) dev_get_drvdata(d)
@@ -369,6 +371,7 @@ static ssize_t gamma_test_show(struct device *dev,
 	return ret;
 }
 
+#ifdef CONFIG_DRM_MSM
 extern ssize_t smart_fps_value_show(struct device *device,
 			   struct device_attribute *attr,
 			   char *buf);
@@ -548,6 +551,7 @@ static DEVICE_ATTR_RO(smart_fps_value);
 static DEVICE_ATTR_RO(complete_commit_time);
 static DEVICE_ATTR_RW(thermal_hbm_disabled);
 static DEVICE_ATTR_RO(hw_vsync_info);
+#endif /* CONFIG_DRM_MSM */
 static DEVICE_ATTR_RW(disp_pcc);
 
 static struct attribute *connector_dev_attrs[] = {
