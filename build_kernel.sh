@@ -275,9 +275,7 @@ build_target() {
     scripts/config --file "${OUT_DIR}/.config" -e CFI_CLANG
     scripts/config --file "${OUT_DIR}/.config" -e SIMPLE_LMK
     # Force DRM/V4L2 cores to built-in for techpack display stack
-    scripts/config --file "${OUT_DIR}/.config" -e DRM
-    scripts/config --file "${OUT_DIR}/.config" -e DRM_KMS_HELPER
-    scripts/config --file "${OUT_DIR}/.config" -e DRM_PANEL
+    scripts/config --file "${OUT_DIR}/.config" -e VIDEO_V4L2_VIDEOBUF2_CORE
     scripts/config --file "${OUT_DIR}/.config" -e VIDEOBUF2_CORE
     scripts/config --file "${OUT_DIR}/.config" -e VIDEOBUF2_V4L2
     scripts/config --file "${OUT_DIR}/.config" -e MHI_BUS

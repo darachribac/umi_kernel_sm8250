@@ -353,6 +353,9 @@ jobs:
         echo "CONFIG_CFI_CLANG=y" >> "$DEFCONFIG"
         echo "CONFIG_SIMPLE_LMK=y" >> "$DEFCONFIG"
         # Force DRM/V4L2 cores to built-in for techpack display stack
+        # VIDEO_V4L2_VIDEOBUF2_CORE selects VIDEOBUF2_CORE=y (required because
+        # bare VIDEOBUF2_CORE is stripped to =m by Kconfig during defconfig).
+        echo "CONFIG_VIDEO_V4L2_VIDEOBUF2_CORE=y" >> "$DEFCONFIG"
         echo "CONFIG_VIDEOBUF2_CORE=y" >> "$DEFCONFIG"
         echo "CONFIG_VIDEOBUF2_V4L2=y" >> "$DEFCONFIG"
         echo "CONFIG_MHI_BUS=y" >> "$DEFCONFIG"
@@ -380,7 +383,8 @@ jobs:
         for opt in CONFIG_TCP_CONG_BBR CONFIG_TCP_CONG_VEGAS CONFIG_IP_NF_TARGET_TTL \
                    CONFIG_DYNAMIC_FSYNC CONFIG_IOSCHED_ANXIETY CONFIG_DEFAULT_ANXIETY \
                    CONFIG_CFG80211_DEFAULT_PS CONFIG_LTO_CLANG CONFIG_CFI_CLANG \
-                   CONFIG_SIMPLE_LMK CONFIG_VIDEOBUF2_CORE CONFIG_VIDEOBUF2_V4L2 \
+                   CONFIG_SIMPLE_LMK CONFIG_VIDEO_V4L2_VIDEOBUF2_CORE \
+                    CONFIG_VIDEOBUF2_CORE CONFIG_VIDEOBUF2_V4L2 \
                    CONFIG_MHI_BUS CONFIG_QTEE_SHM_BRIDGE; do
           if grep -q "^${opt}=y" "$DEFCONFIG"; then
             echo "  [OK]   ${opt}=y"
