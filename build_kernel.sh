@@ -297,19 +297,30 @@ build_target() {
         
         cp "${OUT_DIR}/arch/arm64/boot/Image" "anykernel/kernels/${OS_TYPE}/"
 
-        # Handle the optional DTB file - copy if present, create empty placeholder otherwise
-        # The kernel build generates DTBs under arch/arm64/boot/dts/vendor/qcom/ but
-        # the packaging script expects a single arch/arm64/boot/dtb file
-        if [ -f "${OUT_DIR}/arch/arm64/boot/dts/vendor/qcom/kona-rumi.dtb" ]; then
-            cp "${OUT_DIR}/arch/arm64/boot/dts/vendor/qcom/kona-rumi.dtb" "${OUT_DIR}/arch/arm64/boot/dtb"
-        elif [ ! -f "${OUT_DIR}/arch/arm64/boot/dtb" ]; then
-            # Create empty placeholder if no DTB was generated
-            touch "${OUT_DIR}/arch/arm64/boot/dtb"
+        # Package the real kona.dtb (base SM8250 DTB for Mi 10 / umi)
+        # AnyKernel3 expects arch/arm64/boot/dtb as a single file.
+        # The kernel build produces DTBs under arch/arm64/boot/dts/vendor/qcom/
+        KONA_DTB="${OUT_DIR}/arch/arm64/boot/dts/vendor/qcom/kona.dtb"
+        OVERLAY_DTBO="${OUT_DIR}/arch/arm64/boot/dts/vendor/qcom/umi-sm8250-overlay.dtbo"
+
+        if [ ! -f "$KONA_DTB" ]; then
+            echo "[!] ERROR: kona.dtb not found at $KONA_DTB"
+            echo "[!] The kernel build did not produce a device tree."
+            echo "[!] Check that CONFIG_ARCH_KONA=y is set in the defconfig."
+            exit 1
         fi
+        cp "$KONA_DTB" "${OUT_DIR}/arch/arm64/boot/dtb"
+        echo "[*] Copied kona.dtb ($(stat -c%s "$KONA_DTB") bytes)"
+
         cp "${OUT_DIR}/arch/arm64/boot/dtb" "anykernel/kernels/${OS_TYPE}/"
-        
-        if [ -f "${OUT_DIR}/arch/arm64/boot/dtbo.img" ]; then
+
+        if [ -f "$OVERLAY_DTBO" ]; then
+            # Use mkdtboimg to unpack the raw DTBO, or copy directly if tool unavailable
+            "${OUT_DIR}/prebuilts/misc/linux-x86/mkdtboimg" split "$OVERLAY_DTBO" \
+                "${OUT_DIR}/arch/arm64/boot/dtbo.img" 2>/dev/null || \
+                cp "$OVERLAY_DTBO" "${OUT_DIR}/arch/arm64/boot/dtbo.img"
             cp "${OUT_DIR}/arch/arm64/boot/dtbo.img" "anykernel/kernels/${OS_TYPE}/"
+            echo "[*] Copied umi-sm8250-overlay.dtbo ($(stat -c%s "$OVERLAY_DTBO") bytes)"
         fi
         
         # 确定 ZIP 文件名

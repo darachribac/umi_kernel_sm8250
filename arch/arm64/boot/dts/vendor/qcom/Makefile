@@ -146,7 +146,10 @@ kona-arglass-overlay.dtbo-base := kona.dtb kona-v2.dtb kona-v2.1.dtb
 kona-xrsku4-overlay.dtbo-base := kona.dtb kona-v2.dtb kona-v2.1.dtb
 kona-hdk-overlay.dtbo-base := kona.dtb kona-v2.dtb kona-v2.1.dtb
 else
-dtb-$(CONFIG_ARCH_KONA) += kona-rumi.dtb \
+dtb-$(CONFIG_ARCH_KONA) += kona.dtb \
+        kona-v2.dtb \
+        kona-v2.1.dtb \
+        kona-rumi.dtb \
         kona-mtp.dtb \
         kona-mtp-ws.dtb \
         kona-mtp-sa.dtb \
@@ -179,14 +182,7 @@ dtb-$(CONFIG_ARCH_KONA) += kona-rumi.dtb \
         kona-v2.1-xrfusion.dtb \
         kona-v2.1-xrfusion-ult.dtb \
         kona-v2.1-arglass.dtb \
-        kona-v2.1-xrsku4.dtb \
-        qrb5165-iot-rb5.dtb \
-        qrb5165m-iot-rb5.dtb \
-        qrb5165n-iot-rb5.dtb \
-        qrb5165n-v2-iot-rb5.dtb \
-        kona-v2.1-iot-rb5.dtb \
-        kona-7230-iot-rb5.dtb \
-        kona-7230m-iot-rb5.dtb
+        kona-v2.1-xrsku4.dtb
 
 endif
 
