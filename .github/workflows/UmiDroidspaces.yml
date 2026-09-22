@@ -1,4 +1,4 @@
-name: Build Kernel
+name: UmiDroidspaces
 
 on:
   workflow_dispatch:
