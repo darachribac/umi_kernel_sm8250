@@ -371,6 +371,12 @@ static ssize_t gamma_test_show(struct device *dev,
 }
 #endif /* CONFIG_DRM_MSM */
 
+static DEVICE_ATTR_RW(status);
+static DEVICE_ATTR_RO(enabled);
+static DEVICE_ATTR_RO(dpms);
+static DEVICE_ATTR_RO(modes);
+static DEVICE_ATTR_RW(disp_pcc);
+
 #ifdef CONFIG_DRM_MSM
 extern ssize_t smart_fps_value_show(struct device *device,
 			   struct device_attribute *attr,
@@ -534,11 +540,6 @@ static ssize_t hw_vsync_info_show(struct device *device,
 	return dsi_display_get_hw_vsync_info(connector, buf);
 }
 
-static DEVICE_ATTR_RW(status);
-static DEVICE_ATTR_RO(enabled);
-static DEVICE_ATTR_RO(dpms);
-static DEVICE_ATTR_RO(modes);
-static DEVICE_ATTR_RW(disp_pcc);
 static DEVICE_ATTR_RW(disp_param);
 static DEVICE_ATTR_RW(mipi_reg);
 static DEVICE_ATTR_RO(oled_pmic_id);
