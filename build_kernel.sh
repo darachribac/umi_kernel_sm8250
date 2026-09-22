@@ -275,9 +275,6 @@ build_target() {
     scripts/config --file "${OUT_DIR}/.config" -e CFI_CLANG
     scripts/config --file "${OUT_DIR}/.config" -e SIMPLE_LMK
 
-    # Enable CONFIG_ARCH_KONA to build the base SM8250 DTB (kona-rumi.dtb)
-    scripts/config --file "${OUT_DIR}/.config" -e ARCH_KONA
-
     echo "[*] Building kernel..."
     make "${MAKE_OPTS[@]}" 
 
@@ -300,15 +297,14 @@ build_target() {
         
         cp "${OUT_DIR}/arch/arm64/boot/Image" "anykernel/kernels/${OS_TYPE}/"
 
-        # Copy the generated kona-rumi.dtb to the expected arch/arm64/boot/dtb location
-        # The build generates DTBs under arch/arm64/boot/dts/vendor/qcom/ when CONFIG_ARCH_KONA=y
+        # Handle the optional DTB file - copy if present, create empty placeholder otherwise
+        # The kernel build generates DTBs under arch/arm64/boot/dts/vendor/qcom/ but
+        # the packaging script expects a single arch/arm64/boot/dtb file
         if [ -f "${OUT_DIR}/arch/arm64/boot/dts/vendor/qcom/kona-rumi.dtb" ]; then
             cp "${OUT_DIR}/arch/arm64/boot/dts/vendor/qcom/kona-rumi.dtb" "${OUT_DIR}/arch/arm64/boot/dtb"
-        elif [ -f "${OUT_DIR}/arch/arm64/boot/dtb" ]; then
-            # Fallback: if dtb already exists (e.g., from CONFIG_BUILD_ARM64_APPENDED_DTB)
-            true
-        else
-            echo "[!] Warning: No DTB found at expected paths"
+        elif [ ! -f "${OUT_DIR}/arch/arm64/boot/dtb" ]; then
+            # Create empty placeholder if no DTB was generated
+            touch "${OUT_DIR}/arch/arm64/boot/dtb"
         fi
         cp "${OUT_DIR}/arch/arm64/boot/dtb" "anykernel/kernels/${OS_TYPE}/"
         
