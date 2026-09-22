@@ -539,7 +539,6 @@ static DEVICE_ATTR_RO(enabled);
 static DEVICE_ATTR_RO(dpms);
 static DEVICE_ATTR_RO(modes);
 static DEVICE_ATTR_RW(disp_pcc);
-#endif /* CONFIG_DRM_MSM */
 static DEVICE_ATTR_RW(disp_param);
 static DEVICE_ATTR_RW(mipi_reg);
 static DEVICE_ATTR_RO(oled_pmic_id);
@@ -553,6 +552,7 @@ static DEVICE_ATTR_RO(smart_fps_value);
 static DEVICE_ATTR_RO(complete_commit_time);
 static DEVICE_ATTR_RW(thermal_hbm_disabled);
 static DEVICE_ATTR_RO(hw_vsync_info);
+#endif /* CONFIG_DRM_MSM */
 
 static struct attribute *connector_dev_attrs[] = {
 	&dev_attr_status.attr,
