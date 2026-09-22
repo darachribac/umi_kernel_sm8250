@@ -376,6 +376,11 @@ static DEVICE_ATTR_RO(enabled);
 static DEVICE_ATTR_RO(dpms);
 static DEVICE_ATTR_RO(modes);
 
+struct drm_msm_pcc color_transform_pcc_cfg = {
+	.r.c = 0, .r.r = 32768, .r.g = 0, .r.b = 0,
+	.g.c = 0, .g.r = 0, .g.g = 32768, .g.b = 0,
+	.b.c = 0, .b.r = 0, .b.g = 0, .b.b = 32768,};
+
 #ifdef CONFIG_DRM_MSM
 extern ssize_t smart_fps_value_show(struct device *device,
 			   struct device_attribute *attr,
@@ -398,12 +403,6 @@ static ssize_t complete_commit_time_show(struct device *dev,
 
 	return complete_commit_time_get(connector, buf);
 }
-
-struct drm_msm_pcc color_transform_pcc_cfg = {
-	.r.c = 0, .r.r = 32768, .r.g = 0, .r.b = 0,
-	.g.c = 0, .g.r = 0, .g.g = 32768, .g.b = 0,
-	.b.c = 0, .b.r = 0, .b.g = 0, .b.b = 32768,};
-EXPORT_SYMBOL(color_transform_pcc_cfg);
 
 static ssize_t disp_pcc_store(struct device *device,
 			   struct device_attribute *attr,
