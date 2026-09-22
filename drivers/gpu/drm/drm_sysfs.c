@@ -230,6 +230,7 @@ static ssize_t modes_show(struct device *device,
 	return written;
 }
 
+#ifdef CONFIG_DRM_MSM
 static ssize_t disp_param_store(struct device *device,
 			   struct device_attribute *attr,
 			   const char *buf, size_t count)
@@ -368,6 +369,7 @@ static ssize_t gamma_test_show(struct device *dev,
 	ret = dsi_display_print_gamma_param(connector, buf);
 	return ret;
 }
+#endif /* CONFIG_DRM_MSM */
 
 #ifdef CONFIG_DRM_MSM
 extern ssize_t smart_fps_value_show(struct device *device,
@@ -557,6 +559,7 @@ static struct attribute *connector_dev_attrs[] = {
 	&dev_attr_enabled.attr,
 	&dev_attr_dpms.attr,
 	&dev_attr_modes.attr,
+#ifdef CONFIG_DRM_MSM
 	&dev_attr_disp_param.attr,
 	&dev_attr_mipi_reg.attr,
 	&dev_attr_oled_pmic_id.attr,
@@ -570,6 +573,7 @@ static struct attribute *connector_dev_attrs[] = {
 	&dev_attr_complete_commit_time.attr,
 	&dev_attr_thermal_hbm_disabled.attr,
 	&dev_attr_hw_vsync_info.attr,
+#endif /* CONFIG_DRM_MSM */
 	&dev_attr_disp_pcc.attr,
 	NULL
 };
