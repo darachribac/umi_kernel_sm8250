@@ -561,6 +561,7 @@ static struct attribute *connector_dev_attrs[] = {
 	&dev_attr_dpms.attr,
 	&dev_attr_modes.attr,
 #ifdef CONFIG_DRM_MSM
+	&dev_attr_disp_pcc.attr,
 	&dev_attr_disp_param.attr,
 	&dev_attr_mipi_reg.attr,
 	&dev_attr_oled_pmic_id.attr,
@@ -575,7 +576,6 @@ static struct attribute *connector_dev_attrs[] = {
 	&dev_attr_thermal_hbm_disabled.attr,
 	&dev_attr_hw_vsync_info.attr,
 #endif /* CONFIG_DRM_MSM */
-	&dev_attr_disp_pcc.attr,
 	NULL
 };
 
