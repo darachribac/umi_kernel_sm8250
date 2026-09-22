@@ -623,6 +623,9 @@ void ufs_qcom_phy_disable_dev_ref_clk(struct phy *generic_phy)
 	ufs_qcom_phy_dev_ref_clk_ctrl(generic_phy, false);
 }
 EXPORT_SYMBOL_GPL(ufs_qcom_phy_disable_dev_ref_clk);
+EXPORT_SYMBOL_GPL(ufs_qcom_phy_start_serdes);
+EXPORT_SYMBOL_GPL(ufs_qcom_phy_ctrl_rx_linecfg);
+EXPORT_SYMBOL_GPL(ufs_qcom_phy_is_pcs_ready);
 
 /* Turn ON M-PHY RMMI interface clocks */
 static int ufs_qcom_phy_enable_iface_clk(struct ufs_qcom_phy *phy)

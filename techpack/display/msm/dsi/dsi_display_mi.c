@@ -419,6 +419,8 @@ ssize_t complete_commit_time_get(struct drm_connector *connector, char *buf)
 	return snprintf(buf, PAGE_SIZE, "%lld\n", priv->complete_commit_time);
 
 }
+EXPORT_SYMBOL_GPL(complete_commit_time_get);
+
 
 int dsi_display_set_thermal_hbm_disabled(struct drm_connector *connector,
 			bool thermal_hbm_disabled)
@@ -498,3 +500,35 @@ ssize_t dsi_display_get_hw_vsync_info(struct drm_connector *connector,
 
 	return calc_hw_vsync_info(display->panel, buf);
 }
+
+EXPORT_SYMBOL_GPL(dsi_display_get_hw_vsync_info);
+
+EXPORT_SYMBOL_GPL(dsi_display_set_thermal_hbm_disabled);
+
+EXPORT_SYMBOL_GPL(dsi_display_get_thermal_hbm_disabled);
+
+EXPORT_SYMBOL_GPL(dsi_display_fod_get);
+
+EXPORT_SYMBOL_GPL(dsi_display_print_gamma_param);
+
+EXPORT_SYMBOL_GPL(dsi_display_read_gamma_param);
+
+EXPORT_SYMBOL_GPL(dsi_display_set_doze_brightness);
+
+EXPORT_SYMBOL_GPL(dsi_display_get_doze_brightness);
+
+EXPORT_SYMBOL_GPL(dsi_display_read_dynamic_fps);
+
+EXPORT_SYMBOL_GPL(dsi_display_read_wp_info);
+
+EXPORT_SYMBOL_GPL(dsi_display_read_panel_info);
+
+EXPORT_SYMBOL_GPL(dsi_display_read_oled_pmic_id);
+
+EXPORT_SYMBOL_GPL(dsi_display_write_mipi_reg);
+
+EXPORT_SYMBOL_GPL(dsi_display_read_mipi_reg);
+
+EXPORT_SYMBOL_GPL(dsi_display_set_disp_param);
+
+EXPORT_SYMBOL_GPL(dsi_display_get_disp_param);

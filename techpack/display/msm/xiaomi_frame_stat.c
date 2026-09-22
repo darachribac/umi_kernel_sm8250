@@ -169,3 +169,5 @@ void frame_stat_collector(u64 duration, enum stat_item item)
 }
 
 
+
+EXPORT_SYMBOL_GPL(smart_fps_value_show);
