@@ -7,6 +7,8 @@
 #define __LINUX_USB_USBPD_H
 
 #include <linux/list.h>
+#include <linux/err.h>
+#include <asm-generic/errno.h>
 
 struct usbpd;
 struct device;
