@@ -705,9 +705,11 @@ CONFIG_CRYPTO_ANSI_CPRNG=y
 CONFIG_PRINTK_TIME=y
 CONFIG_MAGIC_SYSRQ=y
 CONFIG_MEMTEST=y
-# Force VIDEOBUF2_CORE=y via select mechanism; bare VIDEOBUF2_CORE is
-# stripped to =m by Kconfig (no default, no enabled driver selects it).
-CONFIG_VIDEO_V4L2_VIDEOBUF2_CORE=y
+# Force VIDEOBUF2_CORE=y via GKI_HIDDEN_VIDEOBUF2_CONFIGS select mechanism;
+# bare VIDEOBUF2_CORE has no default and no enabled driver selects it, so
+# Kconfig strips explicit =y to =m. Enabling GKI_HIDDEN_VIDEOBUF2_CONFIGS
+# selects VIDEOBUF2_CORE/V4L2/MEMOPS/VMALLOC when VIDEO_V4L2=y.
+CONFIG_GKI_HIDDEN_VIDEOBUF2_CONFIGS=y
 CONFIG_VIDEOBUF2_CORE=y
 CONFIG_VIDEOBUF2_V4L2=y
 CONFIG_VIDEOBUF2_MEMOPS=y
