@@ -53,6 +53,35 @@ static unsigned int lut_row_size = LUT_ROW_SIZE;
 static unsigned int lut_max_entries = LUT_MAX_ENTRIES;
 static bool accumulative_counter;
 
+/*
+ * Prime-cluster overclock.
+ *
+ * The firmware LUT for the prime cluster (freq-domain 2 on kona) tops out
+ * at 2841600 kHz; the row for 3187200 kHz (lval = 166 at the 19.2 MHz XO)
+ * simply is not present in the table programmed by the bootloader.  These
+ * parameters inject an extra LUT row at probe time so the cluster can
+ * actually reach the higher frequency.  See qcom_cpufreq_hw_read_lut().
+ *
+ * WARNING: this is an overclock.  The injected voltage is a linear
+ * extrapolation of the existing curve; too little voltage risks silent
+ * data corruption, too much risks thermal runaway.  Tune at your own
+ * risk and validate stability before relying on it.
+ */
+static uint oc_prime_freq_khz = 3187200;
+module_param(oc_prime_freq_khz, uint, 0440);
+MODULE_PARM_DESC(oc_prime_freq_khz,
+		 "Prime-cluster injected LUT frequency in kHz (0 = disabled)");
+
+static uint oc_prime_volt_uv = 990000;
+module_param(oc_prime_volt_uv, uint, 0440);
+MODULE_PARM_DESC(oc_prime_volt_uv,
+		 "Prime-cluster injected LUT voltage in uV");
+
+static int oc_prime_domain = 2;
+module_param(oc_prime_domain, int, 0440);
+MODULE_PARM_DESC(oc_prime_domain,
+		 "Freq-domain index to overclock (default 2 = prime cluster)");
+
 struct skipped_freq {
 	bool skip;
 	u32 freq;
@@ -444,7 +473,7 @@ static struct cpufreq_driver cpufreq_qcom_hw_driver = {
 };
 
 static int qcom_cpufreq_hw_read_lut(struct platform_device *pdev,
-				    struct cpufreq_qcom *c)
+				    struct cpufreq_qcom *c, int index)
 {
 	struct device *dev = &pdev->dev, *cpu_dev;
 	void __iomem *base_freq, *base_volt;
@@ -462,6 +491,69 @@ static int qcom_cpufreq_hw_read_lut(struct platform_device *pdev,
 	base_volt = c->reg_bases[REG_VOLT_LUT_TABLE];
 
 	prev_cc = 0;
+
+	/*
+	 * Overclock: if the firmware LUT for this domain does not already
+	 * contain the requested frequency, inject an extra row at the end of
+	 * the table so the cluster can be driven there.  The row is written
+	 * into the hardware LUT registers (FREQ/VOLT) and added to the
+	 * software table in lock-step so the two stay in sync.
+	 *
+	 * The injected row uses the same core_count as the preceding row so
+	 * the driver's duplicate-frequency end-of-table sentinel is not
+	 * triggered prematurely; instead the injected row itself becomes the
+	 * new last entry and the table is terminated with CPUFREQ_TABLE_END
+	 * below.
+	 */
+	if (oc_prime_freq_khz && index == oc_prime_domain) {
+		unsigned int oc_lval = oc_prime_freq_khz / (c->xo_rate / 1000);
+		unsigned int oc_volt_uv = oc_prime_volt_uv;
+		unsigned int prev_volt_uv;
+
+		for (i = 0; i < lut_max_entries; i++) {
+			data = readl_relaxed(base_freq + i * lut_row_size);
+			if (CORE_COUNT_VAL(data) == c->max_cores) {
+				data = readl_relaxed(base_volt + i * lut_row_size);
+				prev_volt_uv = (data & GENMASK(11, 0)) * 1000;
+			}
+		}
+
+		if (!prev_volt_uv) {
+			dev_err(dev, "Domain-%d: no usable LUT row for OC injection\n",
+				 index);
+			return -EINVAL;
+		}
+
+		if (oc_volt_uv < prev_volt_uv) {
+			dev_err(dev, "Domain-%d: OC voltage %uuV below last row %uuV\n",
+				 index, oc_volt_uv, prev_volt_uv);
+			return -EINVAL;
+		}
+
+		if (i >= lut_max_entries) {
+			dev_err(dev, "Domain-%d: no free LUT slot for OC injection\n",
+				 index);
+			return -ERANGE;
+		}
+
+		dev_info(dev, "Domain-%d: injecting %u kHz @ %uuV into LUT row %u\n",
+			 index, oc_prime_freq_khz, oc_volt_uv, i);
+
+		/* Program the hardware LUT registers. */
+		data = GENMASK(31, 30) | oc_lval | (c->max_cores << 16);
+		writel_relaxed(data, base_freq + i * lut_row_size);
+		data = (oc_volt_uv / 1000) & GENMASK(11, 0);
+		writel_relaxed(data, base_volt + i * lut_row_size);
+
+		c->table[i].frequency = oc_prime_freq_khz;
+		c->table[i].flags = 0;
+		/*
+		 * The second loop below re-reads the register we just wrote and
+		 * registers the OPP itself, so do not add it here or the same
+		 * frequency would be inserted twice.
+		 */
+		lut_max_entries = i + 1;
+	}
 
 	for (i = 0; i < lut_max_entries; i++) {
 		data = readl_relaxed(base_freq + i * lut_row_size);
@@ -650,7 +742,7 @@ static int qcom_cpu_resources_init(struct platform_device *pdev,
 	c->xo_rate = xo_rate;
 	c->cpu_hw_rate = cpu_hw_rate;
 
-	ret = qcom_cpufreq_hw_read_lut(pdev, c);
+	ret = qcom_cpufreq_hw_read_lut(pdev, c, index);
 	if (ret) {
 		dev_err(dev, "Domain-%d failed to read LUT\n", index);
 		return ret;
