@@ -15,7 +15,6 @@
 #include <linux/energy_model.h>
 #include <linux/sched.h>
 #include <linux/cpu_cooling.h>
-#include <linux/qcom_scm.h>
 
 #define CREATE_TRACE_POINTS
 #include <trace/events/dcvsh.h>
@@ -511,9 +510,6 @@ static int qcom_cpufreq_hw_inject_oc_row(struct platform_device *pdev,
 	struct device *dev = &pdev->dev;
 	void __iomem *base_freq = c->reg_bases[REG_FREQ_LUT_TABLE];
 	void __iomem *base_volt = c->reg_bases[REG_VOLT_LUT_TABLE];
-	/* Physical base for SCM bypass (bypasses TZ LUT lock). */
-	struct resource *res;
-	phys_addr_t phys_base;
 	unsigned int oc_freq_khz = oc_prime_freq_khz;
 	unsigned int oc_volt_uv = oc_prime_volt_uv;
 	unsigned int last_idx, last_volt_uv, oc_lval, oc_volt_mv;
@@ -603,63 +599,39 @@ static int qcom_cpufreq_hw_inject_oc_row(struct platform_device *pdev,
 		 index, last_idx, c->table[last_idx].frequency,
 		 oc_freq_khz, oc_volt_uv, oc_lval);
 
-	/* Get physical base for SCM bypass (bypasses TZ LUT lock). */
-	res = platform_get_resource(pdev, IORESOURCE_MEM, index);
-	if (!res) {
-		dev_err(dev, "Domain-%d: cannot get phys base for SCM write\n",
-			 index);
-		return -ENXIO;
-	}
-	phys_base = resource_start(res);
-
 	/*
-	 * FREQ row at offset 0x100: preserve src/reserved, replace lval & cc.
-	 * Use SCM to bypass TZ lock on EPSS LUT registers.
+	 * FREQ row: preserve src and reserved bits, replace lval and
+	 * core-count only.  This keeps the row in the same clock domain as
+	 * the rest of the table.
 	 */
 	freq_row &= ~(GENMASK(7, 0) | GENMASK(18, 16));
 	freq_row |= oc_lval | (c->max_cores << 16);
-	ret = qcom_scm_io_writel(phys_base + 0x100 + last_idx * 4, freq_row);
-	if (ret) {
-		dev_err(dev, "Domain-%d: SCM FREQ write failed: %d\n",
-			 index, ret);
-		return ret;
-	}
-
-	/* Verify FREQ row landed via SCM read-back. */
-	verify = 0;
-	ret = qcom_scm_io_readl(phys_base + 0x100 + last_idx * 4, &verify);
-	if (ret || ((verify & GENMASK(7, 0)) != oc_lval)) {
-		dev_err(dev, "Domain-%d: FREQ LUT row %u verify failed "
-			 "(lval %u != %u, ret=%d)\n",
-			 index, last_idx, (unsigned)verify & GENMASK(7, 0),
-			 oc_lval, ret);
-		return ret ? ret : -EIO;
-	}
+	writel_relaxed(freq_row, base_freq + last_idx * lut_row_size);
 
 	/*
-	 * VOLT row at offset 0x200: preserve vc/aux bits, replace 12-bit MV.
+	 * VOLT row: preserve vc (bits 21:16) and any other auxiliary /
+	 * reserved bits; replace only the 12-bit voltage field.  A plain
+	 * write would silently zero vc and the reserved bits, which is a
+	 * functional regression on the row we are overwriting.
 	 */
 	volt_row &= ~GENMASK(11, 0);
 	volt_row |= oc_volt_mv & GENMASK(11, 0);
-	ret = qcom_scm_io_writel(phys_base + 0x200 + last_idx * 4, volt_row);
-	if (ret) {
-		dev_err(dev, "Domain-%d: SCM VOLT write failed: %d\n",
-			 index, ret);
-		return ret;
+	writel_relaxed(volt_row, base_volt + last_idx * lut_row_size);
+
+	/* Verify both writes actually landed. */
+	verify = readl_relaxed(base_freq + last_idx * lut_row_size);
+	if ((verify & GENMASK(7, 0)) != oc_lval) {
+		dev_err(dev, "Domain-%d: FREQ LUT row %u verify failed (lval %lu != %u)\n",
+			 index, last_idx, verify & GENMASK(7, 0), oc_lval);
+		return -EIO;
 	}
 
-	/* Verify VOLT row landed via SCM read-back. */
-	verify = 0;
-	ret = qcom_scm_io_readl(phys_base + 0x200 + last_idx * 4, &verify);
-	if (ret || ((verify & GENMASK(11, 0)) != oc_volt_mv)) {
-		dev_err(dev, "Domain-%d: VOLT LUT row %u verify failed "
-			 "(mv %u != %u, ret=%d)\n",
-			 index, last_idx, verify & GENMASK(11, 0), oc_volt_mv, ret);
-		return ret ? ret : -EIO;
+	verify = readl_relaxed(base_volt + last_idx * lut_row_size);
+	if ((verify & GENMASK(11, 0)) != oc_volt_mv) {
+		dev_err(dev, "Domain-%d: VOLT LUT row %u verify failed (mv %lu != %u)\n",
+			 index, last_idx, verify & GENMASK(11, 0), oc_volt_mv);
+		return -EIO;
 	}
-
-	dev_info(dev, "Domain-%d: SCM bypass succeeded for LUT row %u\n",
-		 index, last_idx);
 
 	/* Software table + OPP list. */
 	c->table[last_idx].frequency = oc_freq_khz;
