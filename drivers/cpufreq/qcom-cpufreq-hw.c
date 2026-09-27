@@ -521,19 +521,24 @@ static int qcom_cpufreq_hw_inject_oc_row(struct platform_device *pdev,
 	}
 
 	/*
-	 * We need one free slot for the new row plus one for the sentinel.
-	 * The table was allocated with lut_max_entries + 1 entries, and the
-	 * loop above already placed the sentinel at c->lut_max_entries.
+	 * Overwrite the last valid firmware row in-place rather than
+	 * appending a new one.  The EPSS PERF_STATE register only accepts
+	 * indices within the firmware-programmed LUT range; writing an index
+	 * beyond it is silently clamped, so a row appended at slot 20 would
+	 * never be selectable even though the software table and OPP list
+	 * advertise it.  Replacing the last row keeps the index space
+	 * unchanged -- the governor still requests index 19, the hardware
+	 * still accepts index 19, but the frequency at that index is now
+	 * 3187200 instead of 2841600.
+	 *
+	 * The original 2841600 kHz OPP remains registered (added during the
+	 * parse loop above) so it shows up in scaling_available_frequencies;
+	 * only the hardware LUT row and the software table entry are
+	 * overwritten.
 	 */
-	if (c->lut_max_entries + 1 > lut_max_entries) {
-		dev_err(dev, "Domain-%d: no room in LUT for OC row (%u/%u used)\n",
-			index, c->lut_max_entries, lut_max_entries);
-		return -ERANGE;
-	}
-
 	if (c->lut_max_entries == 0) {
 		dev_err(dev, "Domain-%d: empty LUT, cannot inject OC row\n",
-			index);
+			 index);
 		return -EINVAL;
 	}
 
@@ -544,19 +549,19 @@ static int qcom_cpufreq_hw_inject_oc_row(struct platform_device *pdev,
 
 	if (!last_volt_uv) {
 		dev_err(dev, "Domain-%d: no usable voltage in last LUT row\n",
-			index);
+			 index);
 		return -EINVAL;
 	}
 
 	if (oc_volt_uv < last_volt_uv) {
 		dev_err(dev, "Domain-%d: OC voltage %u uV below last row %u uV\n",
-			index, oc_volt_uv, last_volt_uv);
+			 index, oc_volt_uv, last_volt_uv);
 		return -EINVAL;
 	}
 
 	if (oc_volt_uv > OC_PRIME_VOLT_MAX_UV) {
 		dev_err(dev, "Domain-%d: OC voltage %u uV above safety cap %u uV\n",
-			index, oc_volt_uv, OC_PRIME_VOLT_MAX_UV);
+			 index, oc_volt_uv, OC_PRIME_VOLT_MAX_UV);
 		return -EINVAL;
 	}
 
@@ -568,28 +573,37 @@ static int qcom_cpufreq_hw_inject_oc_row(struct platform_device *pdev,
 	oc_lval = DIV_ROUND_CLOSEST(oc_freq_khz, c->xo_rate / 1000);
 	if (!oc_lval || oc_lval > GENMASK(7, 0)) {
 		dev_err(dev, "Domain-%d: OC freq %u kHz out of range (lval %u)\n",
-			index, oc_freq_khz, oc_lval);
+			 index, oc_freq_khz, oc_lval);
 		return -EINVAL;
 	}
 
-	dev_info(dev, "Domain-%d: injecting %u kHz @ %u uV as LUT row %u (lval %u)\n",
-		 index, oc_freq_khz, oc_volt_uv, c->lut_max_entries, oc_lval);
+	dev_info(dev, "Domain-%d: overwriting LUT row %u: %u kHz -> %u kHz @ %u uV (lval %u)\n",
+		 index, last_idx, c->table[last_idx].frequency,
+		 oc_freq_khz, oc_volt_uv, oc_lval);
 
 	/*
-	 * Preserve the source/sentinel bits of the last valid row, and only
+	 * Preserve the source/sentinel bits of the existing row, and only
 	 * replace the lval and core-count fields.  This keeps the row in the
 	 * same clock domain as the rest of the table.
 	 */
 	row &= ~(GENMASK(7, 0) | GENMASK(18, 16));
 	row |= oc_lval | (c->max_cores << 16);
-	writel_relaxed(row, base_freq + c->lut_max_entries * lut_row_size);
+	writel_relaxed(row, base_freq + last_idx * lut_row_size);
 
 	data = (oc_volt_uv / 1000) & GENMASK(11, 0);
-	writel_relaxed(data, base_volt + c->lut_max_entries * lut_row_size);
+	writel_relaxed(data, base_volt + last_idx * lut_row_size);
+
+	/* Verify the write took effect. */
+	data = readl_relaxed(base_freq + last_idx * lut_row_size);
+	if ((data & GENMASK(7, 0)) != oc_lval) {
+		dev_err(dev, "Domain-%d: LUT row %u write verify failed (lval %lu != %u)\n",
+			 index, last_idx, data & GENMASK(7, 0), oc_lval);
+		return -EIO;
+	}
 
 	/* Software table + OPP list. */
-	c->table[c->lut_max_entries].frequency = oc_freq_khz;
-	c->table[c->lut_max_entries].flags = 0;
+	c->table[last_idx].frequency = oc_freq_khz;
+	c->table[last_idx].flags = 0;
 
 	for_each_cpu(cpu, &c->related_cpus) {
 		cpu_dev = get_cpu_device(cpu);
@@ -598,13 +612,10 @@ static int qcom_cpufreq_hw_inject_oc_row(struct platform_device *pdev,
 		ret = dev_pm_opp_add(cpu_dev, oc_freq_khz * 1000, oc_volt_uv);
 		if (ret && ret != -EEXIST) {
 			dev_err(dev, "Domain-%d: failed to add OPP %u kHz: %d\n",
-				index, oc_freq_khz, ret);
+				 index, oc_freq_khz, ret);
 			return ret;
 		}
 	}
-
-	c->lut_max_entries++;
-	c->table[c->lut_max_entries].frequency = CPUFREQ_TABLE_END;
 
 	return 0;
 }
