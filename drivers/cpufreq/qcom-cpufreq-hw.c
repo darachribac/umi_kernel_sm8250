@@ -82,6 +82,9 @@ module_param(oc_prime_domain, int, 0440);
 MODULE_PARM_DESC(oc_prime_domain,
 		 "Freq-domain index to overclock (default 2 = prime cluster)");
 
+/* Safety cap for the injected voltage: 1.2 V is already generous. */
+#define OC_PRIME_VOLT_MAX_UV	1200000U
+
 struct skipped_freq {
 	bool skip;
 	u32 freq;
@@ -472,6 +475,140 @@ static struct cpufreq_driver cpufreq_qcom_hw_driver = {
 	.ready		= qcom_cpufreq_ready,
 };
 
+/*
+ * Try to append an extra row to the frequency table for the prime cluster.
+ *
+ * The firmware LUT tops out below the frequency we want to reach, so the
+ * row is synthesised here.  The row is written into the hardware FREQ/VOLT
+ * LUT registers so that selecting its index actually drives the cluster to
+ * the requested frequency, and the software table plus the OPP list are
+ * updated in lock-step.
+ *
+ * The injected row is placed immediately after the last valid firmware row
+ * (i.e. it overwrites the firmware's end-of-table sentinel row).  The
+ * driver reads the LUT only once at probe time, so disturbing the hardware
+ * sentinel is acceptable; the software sentinel is moved along.
+ *
+ * Returns 0 on success (including "nothing to do"), negative errno on
+ * failure.
+ */
+static int qcom_cpufreq_hw_inject_oc_row(struct platform_device *pdev,
+					 struct cpufreq_qcom *c,
+					 int index)
+{
+	struct device *dev = &pdev->dev;
+	void __iomem *base_freq = c->reg_bases[REG_FREQ_LUT_TABLE];
+	void __iomem *base_volt = c->reg_bases[REG_VOLT_LUT_TABLE];
+	unsigned int oc_freq_khz = oc_prime_freq_khz;
+	unsigned int oc_volt_uv = oc_prime_volt_uv;
+	unsigned int last_idx, last_volt_uv, oc_lval;
+	unsigned int data, row;
+	unsigned long cpu;
+	struct device *cpu_dev;
+	int ret;
+
+	/* Feature disabled, or not the domain we care about. */
+	if (!oc_freq_khz || index != oc_prime_domain)
+		return 0;
+
+	/* Do we already have that frequency in the table? */
+	for (last_idx = 0; last_idx < c->lut_max_entries; last_idx++) {
+		if (c->table[last_idx].frequency == oc_freq_khz) {
+			dev_info(dev, "Domain-%d: %u kHz already in LUT, not injecting\n",
+				 index, oc_freq_khz);
+			return 0;
+		}
+	}
+
+	/*
+	 * We need one free slot for the new row plus one for the sentinel.
+	 * The table was allocated with lut_max_entries + 1 entries, and the
+	 * loop above already placed the sentinel at c->lut_max_entries.
+	 */
+	if (c->lut_max_entries + 1 > lut_max_entries) {
+		dev_err(dev, "Domain-%d: no room in LUT for OC row (%u/%u used)\n",
+			index, c->lut_max_entries, lut_max_entries);
+		return -ERANGE;
+	}
+
+	if (c->lut_max_entries == 0) {
+		dev_err(dev, "Domain-%d: empty LUT, cannot inject OC row\n",
+			index);
+		return -EINVAL;
+	}
+
+	last_idx = c->lut_max_entries - 1;
+	row = readl_relaxed(base_freq + last_idx * lut_row_size);
+	data = readl_relaxed(base_volt + last_idx * lut_row_size);
+	last_volt_uv = (data & GENMASK(11, 0)) * 1000;
+
+	if (!last_volt_uv) {
+		dev_err(dev, "Domain-%d: no usable voltage in last LUT row\n",
+			index);
+		return -EINVAL;
+	}
+
+	if (oc_volt_uv < last_volt_uv) {
+		dev_err(dev, "Domain-%d: OC voltage %u uV below last row %u uV\n",
+			index, oc_volt_uv, last_volt_uv);
+		return -EINVAL;
+	}
+
+	if (oc_volt_uv > OC_PRIME_VOLT_MAX_UV) {
+		dev_err(dev, "Domain-%d: OC voltage %u uV above safety cap %u uV\n",
+			index, oc_volt_uv, OC_PRIME_VOLT_MAX_UV);
+		return -EINVAL;
+	}
+
+	if (!c->xo_rate) {
+		dev_err(dev, "Domain-%d: XO rate unknown\n", index);
+		return -EINVAL;
+	}
+
+	oc_lval = DIV_ROUND_CLOSEST(oc_freq_khz, c->xo_rate / 1000);
+	if (!oc_lval || oc_lval > GENMASK(7, 0)) {
+		dev_err(dev, "Domain-%d: OC freq %u kHz out of range (lval %u)\n",
+			index, oc_freq_khz, oc_lval);
+		return -EINVAL;
+	}
+
+	dev_info(dev, "Domain-%d: injecting %u kHz @ %u uV as LUT row %u (lval %u)\n",
+		 index, oc_freq_khz, oc_volt_uv, c->lut_max_entries, oc_lval);
+
+	/*
+	 * Preserve the source/sentinel bits of the last valid row, and only
+	 * replace the lval and core-count fields.  This keeps the row in the
+	 * same clock domain as the rest of the table.
+	 */
+	row &= ~(GENMASK(7, 0) | GENMASK(18, 16));
+	row |= oc_lval | (c->max_cores << 16);
+	writel_relaxed(row, base_freq + c->lut_max_entries * lut_row_size);
+
+	data = (oc_volt_uv / 1000) & GENMASK(11, 0);
+	writel_relaxed(data, base_volt + c->lut_max_entries * lut_row_size);
+
+	/* Software table + OPP list. */
+	c->table[c->lut_max_entries].frequency = oc_freq_khz;
+	c->table[c->lut_max_entries].flags = 0;
+
+	for_each_cpu(cpu, &c->related_cpus) {
+		cpu_dev = get_cpu_device(cpu);
+		if (!cpu_dev)
+			continue;
+		ret = dev_pm_opp_add(cpu_dev, oc_freq_khz * 1000, oc_volt_uv);
+		if (ret && ret != -EEXIST) {
+			dev_err(dev, "Domain-%d: failed to add OPP %u kHz: %d\n",
+				index, oc_freq_khz, ret);
+			return ret;
+		}
+	}
+
+	c->lut_max_entries++;
+	c->table[c->lut_max_entries].frequency = CPUFREQ_TABLE_END;
+
+	return 0;
+}
+
 static int qcom_cpufreq_hw_read_lut(struct platform_device *pdev,
 				    struct cpufreq_qcom *c, int index)
 {
@@ -480,6 +617,8 @@ static int qcom_cpufreq_hw_read_lut(struct platform_device *pdev,
 	u32 data, src, lval, i, core_count, prev_cc, prev_freq, cur_freq, volt;
 	u32 vc;
 	unsigned long cpu;
+	unsigned int hw_max_entries = lut_max_entries;
+	int ret;
 
 	c->table = devm_kcalloc(dev, lut_max_entries + 1,
 				sizeof(*c->table), GFP_KERNEL);
@@ -492,82 +631,7 @@ static int qcom_cpufreq_hw_read_lut(struct platform_device *pdev,
 
 	prev_cc = 0;
 
-	/*
-	 * Overclock: if the firmware LUT for this domain does not already
-	 * contain the requested frequency, inject an extra row at the end of
-	 * the table so the cluster can be driven there.  The row is written
-	 * into the hardware LUT registers (FREQ/VOLT) and added to the
-	 * software table in lock-step so the two stay in sync.
-	 *
-	 * The injected row uses the same core_count as the preceding row so
-	 * the driver's duplicate-frequency end-of-table sentinel is not
-	 * triggered prematurely; instead the injected row itself becomes the
-	 * new last entry and the table is terminated with CPUFREQ_TABLE_END
-	 * below.
-	 */
-	if (oc_prime_freq_khz && index == oc_prime_domain) {
-		unsigned int oc_lval = oc_prime_freq_khz / (c->xo_rate / 1000);
-		unsigned int oc_volt_uv = oc_prime_volt_uv;
-		unsigned int prev_volt_uv = 0;
-		unsigned int inject_row = 0;
-		bool found = false;
-
-		/*
-		 * Scan the firmware LUT and remember the last row whose
-		 * core_count matches this domain.  That row's voltage is the
-		 * floor we must stay above, and the slot immediately after it
-		 * is where the injected row goes.  The scan does NOT stop at the
-		 * end-of-table sentinel because we need the physical slot index,
-		 * not the logical entry count.
-		 */
-		for (i = 0; i < lut_max_entries; i++) {
-			data = readl_relaxed(base_freq + i * lut_row_size);
-			if (CORE_COUNT_VAL(data) == c->max_cores) {
-				data = readl_relaxed(base_volt + i * lut_row_size);
-				prev_volt_uv = (data & GENMASK(11, 0)) * 1000;
-				inject_row = i + 1;
-				found = true;
-			}
-		}
-
-		if (!found) {
-			dev_err(dev, "Domain-%d: no usable LUT row for OC injection\n",
-				 index);
-			return -EINVAL;
-		}
-
-		if (oc_volt_uv < prev_volt_uv) {
-			dev_err(dev, "Domain-%d: OC voltage %uuV below last row %uuV\n",
-				 index, oc_volt_uv, prev_volt_uv);
-			return -EINVAL;
-		}
-
-		if (inject_row >= lut_max_entries) {
-			dev_err(dev, "Domain-%d: no free LUT slot for OC injection\n",
-				 index);
-			return -ERANGE;
-		}
-
-		dev_info(dev, "Domain-%d: injecting %u kHz @ %uuV into LUT row %u\n",
-			 index, oc_prime_freq_khz, oc_volt_uv, inject_row);
-
-		/* Program the hardware LUT registers. */
-		data = GENMASK(31, 30) | oc_lval | (c->max_cores << 16);
-		writel_relaxed(data, base_freq + inject_row * lut_row_size);
-		data = (oc_volt_uv / 1000) & GENMASK(11, 0);
-		writel_relaxed(data, base_volt + inject_row * lut_row_size);
-
-		c->table[inject_row].frequency = oc_prime_freq_khz;
-		c->table[inject_row].flags = 0;
-		/*
-		 * The second loop below re-reads the register we just wrote and
-		 * registers the OPP itself, so do not add it here or the same
-		 * frequency would be inserted twice.
-		 */
-		lut_max_entries = inject_row + 1;
-	}
-
-	for (i = 0; i < lut_max_entries; i++) {
+	for (i = 0; i < hw_max_entries; i++) {
 		data = readl_relaxed(base_freq + i * lut_row_size);
 		src = (data & GENMASK(31, 30)) >> 30;
 		lval = data & GENMASK(7, 0);
@@ -668,6 +732,21 @@ static int qcom_cpufreq_hw_read_lut(struct platform_device *pdev,
 				c->skip_data.prev_freq,
 				c->skip_data.prev_index,
 				c->skip_data.prev_cc);
+	}
+
+	/*
+	 * Overclock: optionally append an extra row for the prime cluster.
+	 * This is done after the firmware table has been parsed so that the
+	 * injected row cannot confuse the end-of-table sentinel detection.
+	 */
+	ret = qcom_cpufreq_hw_inject_oc_row(pdev, c, index);
+	if (ret) {
+		/*
+		 * Injection failure is not fatal: the device still works at
+		 * the firmware frequencies.  Log it and carry on.
+		 */
+		dev_warn(dev, "Domain-%d: OC injection failed: %d\n",
+			 index, ret);
 	}
 
 	return 0;
