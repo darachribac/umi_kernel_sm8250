@@ -508,17 +508,29 @@ static int qcom_cpufreq_hw_read_lut(struct platform_device *pdev,
 	if (oc_prime_freq_khz && index == oc_prime_domain) {
 		unsigned int oc_lval = oc_prime_freq_khz / (c->xo_rate / 1000);
 		unsigned int oc_volt_uv = oc_prime_volt_uv;
-		unsigned int prev_volt_uv;
+		unsigned int prev_volt_uv = 0;
+		unsigned int inject_row = 0;
+		bool found = false;
 
+		/*
+		 * Scan the firmware LUT and remember the last row whose
+		 * core_count matches this domain.  That row's voltage is the
+		 * floor we must stay above, and the slot immediately after it
+		 * is where the injected row goes.  The scan does NOT stop at the
+		 * end-of-table sentinel because we need the physical slot index,
+		 * not the logical entry count.
+		 */
 		for (i = 0; i < lut_max_entries; i++) {
 			data = readl_relaxed(base_freq + i * lut_row_size);
 			if (CORE_COUNT_VAL(data) == c->max_cores) {
 				data = readl_relaxed(base_volt + i * lut_row_size);
 				prev_volt_uv = (data & GENMASK(11, 0)) * 1000;
+				inject_row = i + 1;
+				found = true;
 			}
 		}
 
-		if (!prev_volt_uv) {
+		if (!found) {
 			dev_err(dev, "Domain-%d: no usable LUT row for OC injection\n",
 				 index);
 			return -EINVAL;
@@ -530,29 +542,29 @@ static int qcom_cpufreq_hw_read_lut(struct platform_device *pdev,
 			return -EINVAL;
 		}
 
-		if (i >= lut_max_entries) {
+		if (inject_row >= lut_max_entries) {
 			dev_err(dev, "Domain-%d: no free LUT slot for OC injection\n",
 				 index);
 			return -ERANGE;
 		}
 
 		dev_info(dev, "Domain-%d: injecting %u kHz @ %uuV into LUT row %u\n",
-			 index, oc_prime_freq_khz, oc_volt_uv, i);
+			 index, oc_prime_freq_khz, oc_volt_uv, inject_row);
 
 		/* Program the hardware LUT registers. */
 		data = GENMASK(31, 30) | oc_lval | (c->max_cores << 16);
-		writel_relaxed(data, base_freq + i * lut_row_size);
+		writel_relaxed(data, base_freq + inject_row * lut_row_size);
 		data = (oc_volt_uv / 1000) & GENMASK(11, 0);
-		writel_relaxed(data, base_volt + i * lut_row_size);
+		writel_relaxed(data, base_volt + inject_row * lut_row_size);
 
-		c->table[i].frequency = oc_prime_freq_khz;
-		c->table[i].flags = 0;
+		c->table[inject_row].frequency = oc_prime_freq_khz;
+		c->table[inject_row].flags = 0;
 		/*
 		 * The second loop below re-reads the register we just wrote and
 		 * registers the OPP itself, so do not add it here or the same
 		 * frequency would be inserted twice.
 		 */
-		lut_max_entries = i + 1;
+		lut_max_entries = inject_row + 1;
 	}
 
 	for (i = 0; i < lut_max_entries; i++) {
