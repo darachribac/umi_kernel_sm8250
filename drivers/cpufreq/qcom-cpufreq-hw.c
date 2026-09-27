@@ -532,6 +532,29 @@ static int qcom_cpufreq_hw_read_lut(struct platform_device *pdev,
 	c->lut_max_entries = i;
 	c->table[i].frequency = CPUFREQ_TABLE_END;
 
+	/*
+	 * Diagnostic: dump the raw hardware LUT (freq/volt/core_count/src per
+	 * row) so the effective max frequency and whether a 3187200 kHz row
+	 * exists can be read straight out of dmesg.  This is the only way to
+	 * tell whether the prime cluster already supports 3.1872 GHz or
+	 * whether the row would have to be synthesised in hardware.
+	 */
+	pr_info("%s: LUT[%u] xo_rate=%lu cpu_hw_rate=%lu lut_row_size=%u\n",
+		__func__, c->lut_max_entries, c->xo_rate, c->cpu_hw_rate,
+		lut_row_size);
+	for (i = 0; i < c->lut_max_entries; i++) {
+		data = readl_relaxed(base_freq + i * lut_row_size);
+		src = (data & GENMASK(31, 30)) >> 30;
+		lval = data & GENMASK(7, 0);
+		core_count = CORE_COUNT_VAL(data);
+		data = readl_relaxed(base_volt + i * lut_row_size);
+		volt = (data & GENMASK(11, 0)) * 1000;
+		vc = data & GENMASK(21, 16);
+		pr_info("%s: row[%u] freq=%u volt=%u core_count=%u src=%u lval=%u vc=%u\n",
+			__func__, i, c->table[i].frequency, volt, core_count,
+			src, lval, vc);
+	}
+
 	if (c->skip_data.skip) {
 		pr_info("%s Skip: Index[%u], Frequency[%u], Core Count %u, Final Index %u Actual Index %u Prev_Freq[%u] Prev_Index[%u] Prev_CC[%u]\n",
 				__func__, c->skip_data.high_temp_index,
@@ -807,7 +830,7 @@ static int cpufreq_hw_register_cooling_device(struct platform_device *pdev)
 						cpu_cdev,
 						&cpufreq_hw_cooling_ops);
 				if (IS_ERR(cpu_cdev->cdev)) {
-					pr_err("Cooling register failed for %s, ret: %d\n",
+					pr_err("Cooling register failed for %s, ret: %ld\n",
 						cdev_name,
 						PTR_ERR(cpu_cdev->cdev));
 					c->skip_data.final_index =
