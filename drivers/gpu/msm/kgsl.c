@@ -5483,7 +5483,7 @@ int kgsl_device_platform_probe(struct kgsl_device *device)
 	device->dev->dma_parms =
 		kzalloc(sizeof(*device->dev->dma_parms), GFP_KERNEL);
 
-	dma_set_max_seg_size(device->dev, KGSL_DMA_BIT_MASK);
+	dma_set_max_seg_size(device->dev, (unsigned int) KGSL_DMA_BIT_MASK);
 
 	/* Initialize the memory pools */
 	kgsl_init_page_pools(device);
@@ -5532,9 +5532,13 @@ int kgsl_device_platform_probe(struct kgsl_device *device)
 	/* Initialize the snapshot engine */
 	kgsl_device_snapshot_init(device);
 
-	device->events_worker = kthread_create_worker(0, "kgsl-events");
-	sched_setscheduler(device->events_worker->task, SCHED_FIFO, &param);
-	kgsl_pin_to_perf_cpus(device->events_worker->task, "kgsl-events");
+	{
+		struct sched_param param = { .sched_priority = 2 };
+
+		device->events_worker = kthread_create_worker(0, "kgsl-events");
+		sched_setscheduler(device->events_worker->task, SCHED_FIFO, &param);
+		kgsl_pin_to_perf_cpus(device->events_worker->task, "kgsl-events");
+	}
 	/* Initialize common sysfs entries */
 	kgsl_pwrctrl_init_sysfs(device);
 
