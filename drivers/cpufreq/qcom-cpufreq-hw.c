@@ -59,8 +59,9 @@ static bool accumulative_counter;
  * The firmware LUT for the prime cluster (freq-domain 2 on kona) tops out
  * at 2841600 kHz; the row for 3187200 kHz (lval = 166 at the 19.2 MHz XO)
  * simply is not present in the table programmed by the bootloader.  These
- * parameters inject an extra LUT row at probe time so the cluster can
- * actually reach the higher frequency.  See qcom_cpufreq_hw_read_lut().
+ * parameters overwrite the last valid firmware LUT row at probe time so the
+ * cluster can actually reach the higher frequency.  See
+ * qcom_cpufreq_hw_inject_oc_row().
  *
  * WARNING: this is an overclock.  The injected voltage is a linear
  * extrapolation of the existing curve; too little voltage risks silent
@@ -476,18 +477,28 @@ static struct cpufreq_driver cpufreq_qcom_hw_driver = {
 };
 
 /*
- * Try to append an extra row to the frequency table for the prime cluster.
+ * Overwrite the last valid firmware LUT row with the requested OC frequency
+ * and voltage.
  *
  * The firmware LUT tops out below the frequency we want to reach, so the
- * row is synthesised here.  The row is written into the hardware FREQ/VOLT
- * LUT registers so that selecting its index actually drives the cluster to
- * the requested frequency, and the software table plus the OPP list are
- * updated in lock-step.
+ * last valid row is replaced in place.  Appending a new row would not work:
+ * the EPSS PERF_STATE register only accepts indices within the
+ * firmware-programmed LUT range, so an appended index would be silently
+ * clamped and never selectable.  Replacing the last row keeps the index
+ * space unchanged -- the governor still requests the same index, the
+ * hardware still accepts that index, but the frequency/voltage at it is now
+ * the OC value.
  *
- * The injected row is placed immediately after the last valid firmware row
- * (i.e. it overwrites the firmware's end-of-table sentinel row).  The
- * driver reads the LUT only once at probe time, so disturbing the hardware
- * sentinel is acceptable; the software sentinel is moved along.
+ * Both the FREQ and VOLT registers are modified with read-modify-write so
+ * that reserved / auxiliary fields (notably the VOLT register's vc field in
+ * bits 21:16) are preserved.  Both writes are verified by re-reading the
+ * registers; a clamped or ignored write is reported as an error rather than
+ * silently running the new frequency at the old voltage.
+ *
+ * The original firmware OPP for the replaced frequency remains registered in
+ * the OPP table, but it is no longer reachable through the cpufreq table
+ * because its slot has been overwritten.  It therefore no longer appears in
+ * scaling_available_frequencies; only the OC frequency does.
  *
  * Returns 0 on success (including "nothing to do"), negative errno on
  * failure.
@@ -501,8 +512,8 @@ static int qcom_cpufreq_hw_inject_oc_row(struct platform_device *pdev,
 	void __iomem *base_volt = c->reg_bases[REG_VOLT_LUT_TABLE];
 	unsigned int oc_freq_khz = oc_prime_freq_khz;
 	unsigned int oc_volt_uv = oc_prime_volt_uv;
-	unsigned int last_idx, last_volt_uv, oc_lval;
-	unsigned int data, row;
+	unsigned int last_idx, last_volt_uv, oc_lval, oc_volt_mv;
+	unsigned int freq_row, volt_row, verify;
 	unsigned long cpu;
 	struct device *cpu_dev;
 	int ret;
@@ -520,22 +531,6 @@ static int qcom_cpufreq_hw_inject_oc_row(struct platform_device *pdev,
 		}
 	}
 
-	/*
-	 * Overwrite the last valid firmware row in-place rather than
-	 * appending a new one.  The EPSS PERF_STATE register only accepts
-	 * indices within the firmware-programmed LUT range; writing an index
-	 * beyond it is silently clamped, so a row appended at slot 20 would
-	 * never be selectable even though the software table and OPP list
-	 * advertise it.  Replacing the last row keeps the index space
-	 * unchanged -- the governor still requests index 19, the hardware
-	 * still accepts index 19, but the frequency at that index is now
-	 * 3187200 instead of 2841600.
-	 *
-	 * The original 2841600 kHz OPP remains registered (added during the
-	 * parse loop above) so it shows up in scaling_available_frequencies;
-	 * only the hardware LUT row and the software table entry are
-	 * overwritten.
-	 */
 	if (c->lut_max_entries == 0) {
 		dev_err(dev, "Domain-%d: empty LUT, cannot inject OC row\n",
 			 index);
@@ -543,9 +538,25 @@ static int qcom_cpufreq_hw_inject_oc_row(struct platform_device *pdev,
 	}
 
 	last_idx = c->lut_max_entries - 1;
-	row = readl_relaxed(base_freq + last_idx * lut_row_size);
-	data = readl_relaxed(base_volt + last_idx * lut_row_size);
-	last_volt_uv = (data & GENMASK(11, 0)) * 1000;
+
+	/*
+	 * Refuse to clobber a row that the thermal-mitigation state machine
+	 * is using.  Overwriting one of those indices would silently redirect
+	 * the cooling-device path at the OC frequency instead of the
+	 * throttled one, which is the opposite of what the driver wants.
+	 */
+	if (c->skip_data.skip &&
+	    (last_idx == c->skip_data.high_temp_index ||
+	     last_idx == c->skip_data.low_temp_index ||
+	     last_idx == c->skip_data.prev_index)) {
+		dev_err(dev, "Domain-%d: last LUT row %u is in use by thermal mitigation, refusing to overwrite\n",
+			 index, last_idx);
+		return -EBUSY;
+	}
+
+	freq_row = readl_relaxed(base_freq + last_idx * lut_row_size);
+	volt_row = readl_relaxed(base_volt + last_idx * lut_row_size);
+	last_volt_uv = (volt_row & GENMASK(11, 0)) * 1000;
 
 	if (!last_volt_uv) {
 		dev_err(dev, "Domain-%d: no usable voltage in last LUT row\n",
@@ -577,27 +588,48 @@ static int qcom_cpufreq_hw_inject_oc_row(struct platform_device *pdev,
 		return -EINVAL;
 	}
 
+	oc_volt_mv = oc_volt_uv / 1000;
+	if (!oc_volt_mv || oc_volt_mv > GENMASK(11, 0)) {
+		dev_err(dev, "Domain-%d: OC voltage %u uV out of range\n",
+			 index, oc_volt_uv);
+		return -EINVAL;
+	}
+
 	dev_info(dev, "Domain-%d: overwriting LUT row %u: %u kHz -> %u kHz @ %u uV (lval %u)\n",
 		 index, last_idx, c->table[last_idx].frequency,
 		 oc_freq_khz, oc_volt_uv, oc_lval);
 
 	/*
-	 * Preserve the source/sentinel bits of the existing row, and only
-	 * replace the lval and core-count fields.  This keeps the row in the
-	 * same clock domain as the rest of the table.
+	 * FREQ row: preserve src and reserved bits, replace lval and
+	 * core-count only.  This keeps the row in the same clock domain as
+	 * the rest of the table.
 	 */
-	row &= ~(GENMASK(7, 0) | GENMASK(18, 16));
-	row |= oc_lval | (c->max_cores << 16);
-	writel_relaxed(row, base_freq + last_idx * lut_row_size);
+	freq_row &= ~(GENMASK(7, 0) | GENMASK(18, 16));
+	freq_row |= oc_lval | (c->max_cores << 16);
+	writel_relaxed(freq_row, base_freq + last_idx * lut_row_size);
 
-	data = (oc_volt_uv / 1000) & GENMASK(11, 0);
-	writel_relaxed(data, base_volt + last_idx * lut_row_size);
+	/*
+	 * VOLT row: preserve vc (bits 21:16) and any other auxiliary /
+	 * reserved bits; replace only the 12-bit voltage field.  A plain
+	 * write would silently zero vc and the reserved bits, which is a
+	 * functional regression on the row we are overwriting.
+	 */
+	volt_row &= ~GENMASK(11, 0);
+	volt_row |= oc_volt_mv & GENMASK(11, 0);
+	writel_relaxed(volt_row, base_volt + last_idx * lut_row_size);
 
-	/* Verify the write took effect. */
-	data = readl_relaxed(base_freq + last_idx * lut_row_size);
-	if ((data & GENMASK(7, 0)) != oc_lval) {
-		dev_err(dev, "Domain-%d: LUT row %u write verify failed (lval %lu != %u)\n",
-			 index, last_idx, data & GENMASK(7, 0), oc_lval);
+	/* Verify both writes actually landed. */
+	verify = readl_relaxed(base_freq + last_idx * lut_row_size);
+	if ((verify & GENMASK(7, 0)) != oc_lval) {
+		dev_err(dev, "Domain-%d: FREQ LUT row %u verify failed (lval %lu != %u)\n",
+			 index, last_idx, verify & GENMASK(7, 0), oc_lval);
+		return -EIO;
+	}
+
+	verify = readl_relaxed(base_volt + last_idx * lut_row_size);
+	if ((verify & GENMASK(11, 0)) != oc_volt_mv) {
+		dev_err(dev, "Domain-%d: VOLT LUT row %u verify failed (mv %lu != %u)\n",
+			 index, last_idx, verify & GENMASK(11, 0), oc_volt_mv);
 		return -EIO;
 	}
 
@@ -746,9 +778,10 @@ static int qcom_cpufreq_hw_read_lut(struct platform_device *pdev,
 	}
 
 	/*
-	 * Overclock: optionally append an extra row for the prime cluster.
-	 * This is done after the firmware table has been parsed so that the
-	 * injected row cannot confuse the end-of-table sentinel detection.
+	 * Overclock: optionally overwrite the last valid row for the prime
+	 * cluster.  This is done after the firmware table has been parsed so
+	 * that the injected values cannot confuse the end-of-table sentinel
+	 * detection.
 	 */
 	ret = qcom_cpufreq_hw_inject_oc_row(pdev, c, index);
 	if (ret) {
