@@ -11714,7 +11714,7 @@ out:
 
 static inline int find_new_ilb(void)
 {
-	int ilb;
+	int ilb, this_cpu = smp_processor_id();
 
 	if (static_branch_likely(&sched_energy_present))
 		return find_energy_aware_new_ilb();
@@ -11722,7 +11722,7 @@ static inline int find_new_ilb(void)
 	for_each_cpu_and(ilb, nohz.idle_cpus_mask,
 			      housekeeping_cpumask(HK_FLAG_MISC)) {
 
-		if (ilb == smp_processor_id())
+		if (ilb == this_cpu)
 			continue;
 
 		if (idle_cpu(ilb))
