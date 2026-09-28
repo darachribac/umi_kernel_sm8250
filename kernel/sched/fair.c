@@ -12255,10 +12255,8 @@ static int idle_balance(struct rq *this_rq, struct rq_flags *rf)
 			!is_asym_cap_cpu(this_cpu))
 			avg_idle = this_rq->avg_idle;
 
-		if (avg_idle < curr_cost + sd->max_newidle_lb_cost) {
-			update_next_balance(sd, &next_balance);
+		if (avg_idle < curr_cost + sd->max_newidle_lb_cost)
 			break;
-		}
 
 		if (sd->flags & SD_BALANCE_NEWIDLE) {
 			t0 = sched_clock_cpu(this_cpu);
@@ -12267,13 +12265,17 @@ static int idle_balance(struct rq *this_rq, struct rq_flags *rf)
 						   sd, CPU_NEWLY_IDLE,
 						   &continue_balancing);
 
-			domain_cost = sched_clock_cpu(this_cpu) - t0;
+			t1 = sched_clock_cpu(this_cpu);
+			domain_cost = t1 - t0;
+
 			if (domain_cost > sd->max_newidle_lb_cost)
 				sd->max_newidle_lb_cost = domain_cost;
 
-			curr_cost += domain_cost;
 			sd->last_balance = jiffies;
 			update_next_balance(sd, &next_balance);
+
+			curr_cost += domain_cost;
+			t0 = t1;
 		}
 
 		/*
