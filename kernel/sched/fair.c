@@ -12247,7 +12247,7 @@ static int idle_balance(struct rq *this_rq, struct rq_flags *rf)
 	rcu_read_lock();
 	for_each_domain(this_cpu, sd) {
 		int continue_balancing = 1;
-		u64 t0, domain_cost;
+		u64 t0, t1, domain_cost;
 
 		if (!(sd->flags & SD_LOAD_BALANCE))
 			continue;
