@@ -76,7 +76,10 @@ if [ "$ENABLE_KSU" -eq 1 ]; then
     echo " [*] Initializing KernelSU (ReSukiSU) Setup"
     echo "==========================================="
     echo "[*] Downloading and running ReSukiSU remote setup script..."
-    curl -LSs "https://raw.githubusercontent.com/ReSukiSU/ReSukiSU/main/kernel/setup.sh" | bash
+    # Upstream renamed ReSukiSU -> BakaSU and suspended the susfs build in 48fa4bb7e (2026-10-10),
+    # which fails this 4.19 non-GKI tree with "Please wait susfs update".
+    # shortcut: pinned to 34210a4d, the last revision that builds with SUSFS; upgrade once upstream unsuspends it.
+    curl -LSs "https://raw.githubusercontent.com/Baka-SU/BakaSU/main/kernel/setup.sh" | bash -s -- 34210a4dec297cb48ce4bfa1c5ba50a2f7d22641
     echo "[+] KernelSU setup finished."
 fi
 
