@@ -548,6 +548,12 @@ CLANG_FLAGS += -fintegrated-as
 endif
 CLANG_FLAGS	+= -Werror=unknown-warning-option
 CLANG_FLAGS	+= $(call cc-option, -Wno-unsequenced)
+CLANG_FLAGS	+= $(call cc-option, -mllvm -polly)
+CLANG_FLAGS	+= $(call cc-option, -mllvm -polly-reschedule=1)
+CLANG_FLAGS	+= $(call cc-option, -mllvm -polly-postopts=1)
+CLANG_FLAGS	+= $(call cc-option, -mllvm -polly-opt-fusion=max)
+CLANG_FLAGS	+= $(call cc-option, -mllvm -inline-threshold=2500)
+CLANG_FLAGS	+= $(call cc-option, -mllvm -inlinehint-threshold=2000)
 KBUILD_CPPFLAGS	+= $(CLANG_FLAGS)
 export CLANG_FLAGS
 endif
