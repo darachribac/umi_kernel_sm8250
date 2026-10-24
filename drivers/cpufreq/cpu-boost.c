@@ -51,12 +51,12 @@ static struct work_struct input_boost_work;
 static struct work_struct powerkey_input_boost_work;
 static bool input_boost_enabled;
 
-static unsigned int input_boost_ms = 40;
+static unsigned int input_boost_ms = 30;
 show_one(input_boost_ms);
 store_one(input_boost_ms);
 cpu_boost_attr_rw(input_boost_ms);
 
-static unsigned int powerkey_input_boost_ms = 400;
+static unsigned int powerkey_input_boost_ms = 300;
 show_one(powerkey_input_boost_ms);
 store_one(powerkey_input_boost_ms);
 cpu_boost_attr_rw(powerkey_input_boost_ms);
